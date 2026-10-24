@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Energiepreise Bayern</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap">
+<style>
+:root{--ink:#16222E;--mut:#5A6773;--bg:#EEF1F4;--pan:#fff;--line:#CBD3DA;--acc:#0B6E5A}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 "Bricolage Grotesque",system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:28px 18px 48px}
+h1{font-size:clamp(28px,5vw,46px);line-height:1.05;margin:0 0 6px;font-weight:800;letter-spacing:-.02em}
+h2{font-size:18px;margin:32px 0 10px;font-weight:600}
+.sub{color:var(--mut);margin:0 0 22px;max-width:60ch}
+.banner{background:#FFF3C4;border:1px solid #E3C75A;padding:8px 12px;border-radius:6px;margin:0 0 18px}
+.bar{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:end;margin-bottom:20px}
+.tabs{display:flex;gap:0;border:1px solid var(--ink);border-radius:6px;overflow:hidden}
+.tabs button{font:inherit;font-weight:600;background:var(--pan);color:var(--ink);border:0;border-right:1px solid var(--ink);padding:8px 16px;cursor:pointer}
+.tabs button:last-child{border-right:0}
+.tabs button[aria-pressed=true]{background:var(--acc);color:#fff}
+label{display:flex;flex-direction:column;font-size:14px;color:var(--mut);gap:3px}
+select{font:inherit;color:var(--ink);padding:7px 10px;border:1px solid var(--line);border-radius:6px;background:var(--pan);min-width:170px}
+:focus-visible{outline:3px solid #F2A900;outline-offset:2px}
+dl.kpi{display:flex;flex-wrap:wrap;margin:0 0 14px;border-top:2px solid var(--ink);border-bottom:1px solid var(--line)}
+dl.kpi div{flex:1 1 140px;padding:10px 14px 10px 0;margin-right:14px}
+dl.kpi dt{font-size:13px;color:var(--mut)}
+dl.kpi dd{margin:0;font-size:26px;font-weight:800;color:var(--acc);letter-spacing:-.01em}
+dl.kpi small{font-size:14px;font-weight:400;color:var(--mut)}
+#chart{background:var(--pan);border:1px solid var(--line);border-radius:6px;height:420px}
+.tw{overflow-x:auto;background:var(--pan);border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:8px 12px;text-align:right;border-bottom:1px solid #E1E6EA;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--mut);font-size:14px}
+td button{font:inherit;background:none;border:0;padding:0;color:var(--acc);font-weight:600;cursor:pointer;text-decoration:underline}
+tr.sel td{background:#E7F2EF}
+.note{color:var(--mut);font-size:14px;max-width:80ch}
+footer{margin-top:36px;border-top:1px solid var(--line);padding-top:14px;color:var(--mut);font-size:14px}
+footer p{margin:4px 0;max-width:90ch}
+a{color:var(--acc)}
+#fehler{background:#FDE8E8;padding:12px;border-radius:6px}
+</style>
+</head>
+<body>
+<main>
+<h1>Energiepreise Bayern</h1>
+<p class="sub">Diesel, Benzin und Ladestrom der letzten 31 Tage mit Mittelwert, Median, Streuung und Standardabweichung.</p>
+<p class="banner" id="demo" hidden>Dies sind Demodaten zum Testen der Seite, keine echten Preise.</p>
+<p id="fehler" hidden>Die Datei data.json konnte nicht geladen werden. Bitte die Seite über einen Webserver (z. B. GitHub Pages) öffnen.</p>
+
+<div class="bar">
+  <div class="tabs" id="tabs" role="group" aria-label="Produkt"></div>
+  <label id="lg">Gebiet oder Anbieter<select id="gruppe"></select></label>
+  <label id="ll" hidden>Ladeleistung<select id="leistung"></select></label>
+  <label id="lt" hidden>Tarifart<select id="tarif"></select></label>
+</div>
+
+<dl class="kpi" id="kpi"></dl>
+<div id="chart" role="img" aria-label="Boxplot der Preise über die Zeit"></div>
+<p class="note" id="legende"></p>
+
+<h2 id="th">Vergleich zum letzten Messzeitpunkt</h2>
+<div class="tw"><table id="tab"></table></div>
+
+<footer>
+  <p><strong>Quellen.</strong> Kraftstoffpreise: Tankerkönig (<a href="https://creativecommons.tankerkoenig.de">creativecommons.tankerkoenig.de</a>), Daten der Markttransparenzstelle für Kraftstoffe beim Bundeskartellamt, Lizenz CC BY 4.0.</p>
+  <p>Ladestrom: Preislisten der Anbieter laut Datei tariffs.csv, jeweils mit Stand-Datum und Quelle je Eintrag. Die Tarife gelten bundesweit und sind nicht auf Regierungsbezirke aufteilbar.</p>
+  <p><strong>Verlässlichkeit.</strong> Kraftstoffe: Datenabdeckung, also Anteil der Stationen mit gültigem Preis. Ladestrom: Datenalter, also mittleres Alter der Tarifangaben in Tagen. Whisker zeigen Minimum und Maximum, die Raute im Kasten den Mittelwert samt Standardabweichung.</p>
+  <p id="erz"></p>
+</footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const DE=(x,d=3)=>x==null?'–':x.toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const loc=t=>new Date(t).toLocaleString('sv-SE',{timeZone:'Europe/Berlin'}).slice(0,16);
+const P={diesel:['Diesel','#0B6E5A'],e5:['Super E5','#1F4E9C'],e10:['Super E10','#7A3B8F'],laden:['Ladestrom','#B8700A']};
+const S=a=>{a=[...a].sort((x,y)=>x-y);const n=a.length,m=a.reduce((s,x)=>s+x,0)/n,
+  q=p=>{const i=(n-1)*p,f=Math.floor(i);return a[f]+(a[Math.min(f+1,n-1)]-a[f])*(i-f)};
+  return{n,mean:m,median:q(.5),sd:n>1?Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(n-1)):0,min:a[0],max:a[n-1]}};
+const WIDTH=6*3600*1000;
+let D,st={p:'diesel',g:'Bayern',l:'',t:''};
+
+fetch('data.json').then(r=>r.json()).then(d=>{D=d;init()}).catch(()=>{$('#fehler').hidden=false});
+
+function opts(sel,list,cur){sel.innerHTML=list.map(x=>`<option${x===cur?' selected':''}>${esc(x)}</option>`).join('')}
+function init(){
+  $('#demo').hidden=!D.demo;
+  $('#erz').textContent='Stand der Auswertung: '+loc(D.erzeugt)+' Uhr (Ortszeit).';
+  $('#tabs').innerHTML=Object.entries(P).map(([k,v])=>`<button data-p="${k}" aria-pressed="${k===st.p}">${v[0]}</button>`).join('');
+  $('#tabs').onclick=e=>{const b=e.target.closest('button');if(b){st.p=b.dataset.p;render()}};
+  for(const [id,key] of [['gruppe','g'],['leistung','l'],['tarif','t']]) $('#'+id).onchange=e=>{st[key]=e.target.value;render()};
+  const L=D.laden;
+  const lp=[...new Set(L.map(r=>r.leistung))],tf=[...new Set(L.map(r=>r.tarif))];
+  st.l=lp[0]||'';st.t=tf[0]||'';
+  opts($('#leistung'),lp,st.l);opts($('#tarif'),tf,st.t);
+  render();
+}
+function kpi(items){$('#kpi').innerHTML=items.map(([k,v,u])=>`<div><dt>${k}</dt><dd>${v} <small>${u||''}</small></dd></div>`).join('')}
+function render(){
+  document.documentElement.style.setProperty('--acc',P[st.p][1]);
+  document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.p===st.p));
+  st.p==='laden'?laden():kraft();
+}
+function layout(yt){return{margin:{l:60,r:14,t:12,b:48},yaxis:{title:yt,gridcolor:'#E1E6EA',zeroline:false},xaxis:{type:'date',gridcolor:'#EEF1F4'},paper_bgcolor:'#fff',plot_bgcolor:'#fff',font:{family:'Bricolage Grotesque,system-ui,sans-serif',color:'#16222E'},showlegend:false}}
+function kraft(){
+  $('#lg').hidden=false;$('#ll').hidden=$('#lt').hidden=true;
+  const rows=D.kraftstoff.filter(r=>r.fuel===st.p);
+  const ts=[...new Set(rows.map(r=>r.t))].sort(),last=ts[ts.length-1];
+  const lastRows=rows.filter(r=>r.t===last);
+  const geb=lastRows.filter(r=>r.typ==='Gebiet').map(r=>r.gruppe);
+  const anb=lastRows.filter(r=>r.typ==='Anbieter').map(r=>r.gruppe).sort();
+  const list=[...geb,...anb];
+  if(!list.includes(st.g))st.g='Bayern';
+  $('#gruppe').innerHTML='<optgroup label="Gebiet">'+geb.map(x=>`<option${x===st.g?' selected':''}>${esc(x)}</option>`).join('')+'</optgroup><optgroup label="Anbieter">'+anb.map(x=>`<option${x===st.g?' selected':''}>${esc(x)}</option>`).join('')+'</optgroup>';
+  const sel=rows.filter(r=>r.gruppe===st.g).sort((a,b)=>a.t<b.t?-1:1),c=sel[sel.length-1];
+  if(!c){kpi([]);return}
+  kpi([['Mittelwert',DE(c.mean),'€/l'],['Median',DE(c.median),'€/l'],['Standardabweichung',DE(c.sd),'€/l'],['Spannweite',DE(c.spanne),'€/l'],['Stationen',c.n+' von '+c.gesamt,''],['Datenabdeckung',DE(c.abdeckung*100,1),'%']]);
+  const col=P[st.p][1];
+  Plotly.react('chart',[{type:'box',x:sel.map(r=>loc(r.t)),q1:sel.map(r=>r.q1),median:sel.map(r=>r.median),q3:sel.map(r=>r.q3),
+    lowerfence:sel.map(r=>r.min),upperfence:sel.map(r=>r.max),mean:sel.map(r=>r.mean),sd:sel.map(r=>r.sd),boxmean:'sd',width:WIDTH,
+    marker:{color:col},line:{color:col,width:1.5},fillcolor:col+'33',name:st.g}],layout('Preis in €/l'),{responsive:true,displaylogo:false});
+  $('#legende').textContent=`${P[st.p][0]}, ${st.g}: ein Kasten je Abruf (zweimal täglich). Der Kasten reicht vom 1. bis zum 3. Quartil, die Linie darin ist der Median.`;
+  $('#th').textContent='Vergleich zum letzten Messzeitpunkt ('+loc(last)+' Uhr)';
+  const order=[...lastRows].sort((a,b)=>(a.typ===b.typ?a.mean-b.mean:a.typ==='Gebiet'?-1:1));
+  $('#tab').innerHTML='<tr><th>Gebiet / Anbieter</th><th>Mittelwert</th><th>Median</th><th>Std.-Abw.</th><th>Spannweite</th><th>Stationen</th><th>Abdeckung</th></tr>'+
+    order.map(r=>`<tr class="${r.gruppe===st.g?'sel':''}"><td><button data-g="${esc(r.gruppe)}">${esc(r.gruppe)}</button></td><td>${DE(r.mean)}</td><td>${DE(r.median)}</td><td>${DE(r.sd)}</td><td>${DE(r.spanne)}</td><td>${r.n}</td><td>${DE(r.abdeckung*100,1)} %</td></tr>`).join('');
+  $('#tab').onclick=e=>{const b=e.target.closest('button');if(b){st.g=b.dataset.g;render()}};
+}
+function laden(){
+  $('#lg').hidden=true;$('#ll').hidden=$('#lt').hidden=false;
+  const L=D.laden,ts=[...new Set(L.map(r=>r.t))].sort(),last=ts[ts.length-1];
+  const sel=L.filter(r=>r.leistung===st.l&&r.tarif===st.t),now=sel.filter(r=>r.t===last);
+  if(!now.length){kpi([]);return}
+  const s=S(now.map(r=>r.ct)),al=S(now.map(r=>r.alter)).median;
+  kpi([['Mittelwert',DE(s.mean,1),'ct/kWh'],['Median',DE(s.median,1),'ct/kWh'],['Standardabweichung',DE(s.sd,1),'ct/kWh'],['Spannweite',DE(s.max-s.min,1),'ct/kWh'],['Anbieter',s.n,''],['Datenalter (Median)',DE(al,0),'Tage']]);
+  const col=P.laden[1];
+  Plotly.react('chart',[{type:'box',x:sel.map(r=>loc(r.t)),y:sel.map(r=>r.ct),boxmean:'sd',boxpoints:'all',jitter:.4,pointpos:0,width:WIDTH,
+    marker:{color:col,size:4},line:{color:col,width:1.5},fillcolor:col+'33'}],layout('Preis in ct/kWh'),{responsive:true,displaylogo:false});
+  $('#legende').textContent=`Ladestrom ${st.l}, ${st.t}: Verteilung der Anbieterpreise je Abruf. Punkte sind einzelne Anbieter.`;
+  $('#th').textContent='Ladeleistung und Tarifart im Vergleich ('+loc(last)+' Uhr)';
+  const lr=L.filter(r=>r.t===last),keys=[...new Set(lr.map(r=>r.leistung+'|'+r.tarif))].sort();
+  $('#tab').innerHTML='<tr><th>Leistung und Tarif</th><th>Mittelwert</th><th>Median</th><th>Std.-Abw.</th><th>Spannweite</th><th>Anbieter</th><th>Datenalter</th></tr>'+
+    keys.map(k=>{const [l,t]=k.split('|'),v=lr.filter(r=>r.leistung===l&&r.tarif===t),x=S(v.map(r=>r.ct));
+      return `<tr class="${l===st.l&&t===st.t?'sel':''}"><td><button data-k="${esc(k)}">${esc(l)}, ${esc(t)}</button></td><td>${DE(x.mean,1)}</td><td>${DE(x.median,1)}</td><td>${DE(x.sd,1)}</td><td>${DE(x.max-x.min,1)}</td><td>${x.n}</td><td>${DE(S(v.map(r=>r.alter)).median,0)} Tage</td></tr>`}).join('');
+  $('#tab').onclick=e=>{const b=e.target.closest('button');if(b){[st.l,st.t]=b.dataset.k.split('|');opts($('#leistung'),[...new Set(L.map(r=>r.leistung))],st.l);opts($('#tarif'),[...new Set(L.map(r=>r.tarif))],st.t);render()}};
+}
+</script>
+</body>
+</html>
