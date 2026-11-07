@@ -83,7 +83,11 @@ const S=a=>{a=[...a].sort((x,y)=>x-y);const n=a.length,m=a.reduce((s,x)=>s+x,0)/
 const WIDTH=6*3600*1000;
 let D,st={p:'diesel',g:'Bayern',l:'',t:''};
 
-fetch('data.json').then(r=>r.json()).then(d=>{D=d;init()}).catch(()=>{$('#fehler').hidden=false});
+const URL_DATA=new URL('data.json',location.href).href;
+fetch(URL_DATA,{cache:'no-store'})
+  .then(r=>{if(!r.ok)throw new Error('Datei nicht gefunden (HTTP '+r.status+')');return r.json()})
+  .then(d=>{D=d;init()})
+  .catch(e=>{const f=$('#fehler');f.hidden=false;f.textContent='Die Daten konnten nicht geladen werden. Abgerufene Adresse: '+URL_DATA+' | Grund: '+e.message+(location.protocol==='file:'?' | Die Seite wurde lokal geöffnet, bitte über einen Webserver aufrufen.':'')});
 
 function opts(sel,list,cur){sel.innerHTML=list.map(x=>`<option${x===cur?' selected':''}>${esc(x)}</option>`).join('')}
 function init(){
