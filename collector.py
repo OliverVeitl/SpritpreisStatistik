@@ -71,7 +71,8 @@ def collect():
         raise SystemExit("Umgebungsvariable TANKERKOENIG_KEY fehlt.")
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     plz, c, rows = plz_map(), db(), []
-    for s in fetch_stations():
+    stationen = list(fetch_stations())
+    for s in stationen:
         p5 = str(s.get("postCode") or "").zfill(5)
         if p5 not in plz:
             continue
@@ -80,6 +81,7 @@ def collect():
             p = s.get(f)
             ok = isinstance(p, (int, float)) and not isinstance(p, bool) and p > 0
             rows.append((ts, s["id"], marke, p5, plz[p5], f, p if ok else None))
+    print("Stationen abgerufen:", len(stationen), "| in plz_bayern.csv gefunden:", len(rows) // len(FUELS))
     c.executemany("INSERT INTO preise VALUES (?,?,?,?,?,?,?)", rows)
     with open(os.path.join(HERE, "tariffs.csv"), encoding="utf-8") as f:
         c.executemany(
